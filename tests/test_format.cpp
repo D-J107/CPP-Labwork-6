@@ -132,7 +132,7 @@ INSTANTIATE_TEST_SUITE_P(
         "key3 = \"3.14\"",
         "key4 = \"1\t2\t3\"",
         "key5 = \"[1,2,3,4,5]\"",
-        "key5 = \"true"
+        "key5 = \"true\""
     )
 );
 
@@ -210,10 +210,10 @@ INSTANTIATE_TEST_SUITE_P(
     SectionValueValidation,
     InvalidFormatTestSuite,
     testing::Values(
-        "key1 = []",
-        "key2 = {section-1}",
-        "key3 = [section-1.]",
-        "key4 = [.section-1]"
+        "[]",
+        "{section-1}",
+        "[section-1.]",
+        "[.section-1]"
     )
 );
 

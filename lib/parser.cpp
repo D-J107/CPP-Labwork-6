@@ -225,6 +225,13 @@ void omfl::parse(int argc, char** argv) {
     }
     std::string argument = argv[1];
     std::filesystem::path path;
+    if (argument == "--help" || argument == "-h") {
+        std::cout << "OMFLParser program." << '\n';
+        std::cout << "to enter data from file use this argument: --input=....config.omfl or -i=....config.omfl" << '\n';
+        std::cout << "to see data from section named <sectionA> use command \"sectionA\"" << '\n';
+        std::cout << "to see exact value from section <sectionA> from key named <keyA> use command \"sectionA.keyA\"" << '\n';
+        std::cout << "to see exact value from key type array named <keyA> use command \"keyA[x]\"" << '\n';
+    }
     if (argument.substr(0,8) == "--input=") {
         path = argument.substr(8);
     } else if (argument.substr(0,3) == "-i=") {
@@ -243,6 +250,9 @@ void omfl::parse(int argc, char** argv) {
         std::string buffer;
         bool bracket = false;
         omfl::Section current_value = MyParser.global_section;
+        if (MyParser.global_section.sections.find(current_argument) != MyParser.global_section.sections.end()) {
+            MyParser.See(MyParser.global_section.sections[current_argument]);
+        }
         for (int j = 0; j < current_argument.size(); j++) {
             if (current_argument[j] == '.' || (!bracket && j == current_argument.size() - 1) || current_argument[j] == '[') {
                 if ((!bracket && j == current_argument.size() - 1)) {
@@ -519,16 +529,16 @@ omfl::Section& omfl::Section::operator[](const int& index) {
     std::string stack;
     for (int i = 1; i < help_value.size() - 1; i++) {
         if (help_value[i] == '\"') {
-            if (stack.back() == '\"') {
+            if (!stack.empty() && stack.back() == '\"') {
                 stack.pop_back();
             } else {
                 stack += '\"';
             }
         }
-        if (help_value[i] == '[' && stack.back() != '\"') {
+        if (help_value[i] == '[' && (stack.empty() || (!stack.empty() && stack.back() != '\"'))) {
             stack += '[';
         }
-        if (help_value[i] == ']' && stack.back() == '[') {
+        if (help_value[i] == ']' && !stack.empty() && stack.back() == '[') {
             stack.pop_back();
         }
         if (stack.empty() && help_value[i] == ',') {
@@ -547,4 +557,31 @@ omfl::Section& omfl::Section::operator[](const int& index) {
     std::string help_string = help_value.substr(pos1,pos2 - pos1 + 1);
     help_value = SliceTheString(help_string);
     return *this;
+}
+
+void omfl::OMFLParser::See(const Section& section) {
+    std::cout << '[' << section.name << "] ";
+    if (section.sections.empty() && section.values.empty()) {
+        std::cout << "section " << section.name << " is empty." << '\n';
+    }
+    if (!section.sections.empty()) {
+        std::cout << "sub sections: ";
+        for (auto& subsection : section.sections) {
+            std::cout << '[' << subsection.first << "] ";
+        }
+        std::cout << '\n';
+    }
+    else {
+        std::cout << "no subsections" << '\n';
+    }
+    if (!section.values.empty()) {
+        std::cout << "keys: ";
+        for (auto& key : section.values) {
+            std::cout << key.first << ", ";
+        }
+        std::cout << '\n';
+    }
+    else {
+        std::cout << "no keys" << '\n';
+    }
 }

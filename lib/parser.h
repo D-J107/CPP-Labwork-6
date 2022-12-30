@@ -10,6 +10,7 @@
 #include <cstdint>
 
 namespace omfl {
+
     struct Section {
         Section(std::string name = "") {
             this->name = name;
@@ -37,6 +38,7 @@ namespace omfl {
         std::string AsStringOrDefault(const std::string& value) const;
 
         Section& operator [](const int& index);
+
     };
 
     class OMFLParser {
@@ -47,6 +49,7 @@ namespace omfl {
         }
         Section Get(const std::string& str) const;
         bool valid() const;
+        void See(const Section& section);
         bool is_valid_format = true;
         Section global_section;
         Section* pointer_to_section;
