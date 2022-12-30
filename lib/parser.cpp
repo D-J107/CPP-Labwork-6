@@ -218,23 +218,87 @@ bool CheckSection(const std::string& s) {
     return true;
 }
 
-omfl::OMFLParser omfl::parse(const std::filesystem::path &path) {
-    std::ifstream fin;
-    fin.open(path);
-    std::stringstream buffer;
-    buffer << fin.rdbuf();
-    return parse(buffer.str());
+void omfl::parse(int argc, char** argv) {
+    if (argc < 2) {
+        std::cout << "Error! no file to parse" << '\n';
+        return;
+    }
+    std::string argument = argv[1];
+    std::filesystem::path path;
+    if (argument.substr(0,8) == "--input=") {
+        path = argument.substr(8);
+    } else if (argument.substr(0,3) == "-i=") {
+        path = argument.substr(3);
+    } else {
+        std::cout << "Wrong input command! input commant must be <--input=...> or <-i=...>" << '\n';
+        return;
+    }
+    omfl::OMFLParser MyParser = omfl::parse(path);
+    if (!MyParser.is_valid_format) {
+        std::cout << "Error! some data parsed wrong" << '\n';
+        return;
+    }
+    for (int i = 2; i < argc; i++) {
+        std::string current_argument = static_cast<std::string>(argv[i]);
+        std::string buffer;
+        bool bracket = false;
+        omfl::Section current_value = MyParser.global_section;
+        for (int j = 0; j < current_argument.size(); j++) {
+            if (current_argument[j] == '.' || (!bracket && j == current_argument.size() - 1) || current_argument[j] == '[') {
+                if ((!bracket && j == current_argument.size() - 1)) {
+                    buffer += current_argument[j];
+                }
+                current_value = current_value.Get(buffer);
+                buffer = "";
+                if (current_argument[j] == '[') {
+                    bracket = true;
+                }
+            } else if (current_argument[j] == ']') {
+                current_value = current_value[std::stoi(buffer)];
+                bracket = false;
+                buffer = "";
+            } else {
+                buffer += current_argument[j];
+            }
+        }
+        if (current_value.IsString()) {
+            std::cout << current_value.AsString() << '\n';
+        }
+        if (current_value.IsInt()) {
+            std::cout << current_value.AsInt() << '\n';
+        }
+        if (current_value.IsFloat()) {
+            std::cout << current_value.AsFloat() << '\n';
+        }
+        if (current_value.IsBool()) {
+            std::cout << current_value.AsBool() << '\n';
+        }
+    }
 }
 
-omfl::OMFLParser omfl::parse(const std::string &str) {
+omfl::OMFLParser omfl::parse(const std::filesystem::path& path) {
+    std::ifstream fin;
+    fin.open(path, std::ios::in);
+    if (!fin) {
+        std::cout << "Error! file cannot be opened" << '\n';
+    }
+    std::string file_name;
+    for (char c : path.filename().generic_string()) {
+        if (c == '.') {
+            break;
+        }
+        file_name += c;
+    }
+    std::stringstream buffer_for_file;
+    buffer_for_file << fin.rdbuf();
+    return parse(buffer_for_file.str());
+}
+
+omfl::OMFLParser omfl::parse(const std::string& str) {
     OMFLParser MyParser;
     std::string buffer;
     std::string current_key;
     uint8_t condition = 0;
-
-//    OMFLParser& MyParser = *this;
-
-    Section* section_for_writing_data = &MyParser.global_section;
 
     // 0 - waiting for next data
     // 1 - # - comment
@@ -267,27 +331,29 @@ omfl::OMFLParser omfl::parse(const std::string &str) {
             }
         } else if (condition == 2) {
             if (c == '\n') {
+                std::cout << "Error! section name missed!" << '\n';
                 MyParser.is_valid_format = false;
                 return MyParser;
             }
             buffer += c;
             if (c == ']' || i == str.size() - 1) {
                 if (!CheckSection(buffer)) {
+                    std::cout << "Error! section " << buffer << " invalid!" << '\n';
                     MyParser.is_valid_format = false;
                     return MyParser;
                 }
                 std::string buffer_for_sections;
-                section_for_writing_data = &MyParser.global_section;
+                MyParser.pointer_to_section = &MyParser.global_section;
                 for (int j = 1; j < buffer.size(); j++) {
                     if (buffer[j] == '.' || j == buffer.size() - 1) {
                         if (buffer.size() == 3) {
                             buffer_for_sections = buffer[1];
                         }
-                        if (section_for_writing_data->sections.find(buffer_for_sections) == section_for_writing_data->sections.end()) {
+                        if (MyParser.pointer_to_section->sections.find(buffer_for_sections) == MyParser.pointer_to_section->sections.end()) {
                             omfl::Section cur_section = Section(buffer_for_sections);
-                            section_for_writing_data->sections[buffer_for_sections] = cur_section;
+                            MyParser.pointer_to_section->sections[buffer_for_sections] = cur_section;
                         }
-                        section_for_writing_data = &section_for_writing_data->sections[buffer_for_sections];
+                        MyParser.pointer_to_section = &MyParser.pointer_to_section->sections[buffer_for_sections];
                         buffer_for_sections = "";
                         continue;
                     }
@@ -298,12 +364,14 @@ omfl::OMFLParser omfl::parse(const std::string &str) {
             }
         } else if (condition == 3) {
             if (c == '\n' || buffer == "=" || i == str.size() - 1) {
+                std::cout << "Error! key missed" << '\n';
                 MyParser.is_valid_format = false;
                 return MyParser;
             }
             if (c == '=') {
                 std::string maybe_key = SliceTheString(buffer);
                 if (!CheckKey(maybe_key)) {
+                    std::cout << "Error! key name " << maybe_key << " invalid!" << '\n';
                     MyParser.is_valid_format = false;
                     return MyParser;
                 }
@@ -315,17 +383,18 @@ omfl::OMFLParser omfl::parse(const std::string &str) {
             }
         } else if (condition == 4) {
             if (c == '\n' || i == str.size() - 1 || (c == '#' && buffer[0] != '\"')) {
-                if (i == str.size() - 1) {
+                if (c != '\n' && (c != '#' || buffer[0] == '\"')) {
                     buffer += c;
                 }
                 std::string current_value = SliceTheString(buffer);
                 if (!(CheckInteger(current_value) || CheckFloat(current_value) || CheckString(current_value) || CheckBool(current_value) ||
                       CheckArray(current_value))) {
+                    std::cout << "Error! value " << current_value << " invalid!" << '\n';
                     MyParser.is_valid_format = false;
                     return MyParser;
                 }
-                if (section_for_writing_data->values.find(current_key) == section_for_writing_data->values.end()) {
-                    section_for_writing_data->values[current_key] = current_value;
+                if (MyParser.pointer_to_section->values.find(current_key) == MyParser.pointer_to_section->values.end()) {
+                    MyParser.pointer_to_section->values[current_key] = current_value;
                     buffer = "";
                     if (c == '#') {
                         condition = 1;
@@ -333,6 +402,7 @@ omfl::OMFLParser omfl::parse(const std::string &str) {
                         condition = 0;
                     }
                 } else {
+                    std::cout << "Error! redefinition" << current_key << '\n';
                     MyParser.is_valid_format = false;
                     return MyParser;
                 }
@@ -341,6 +411,7 @@ omfl::OMFLParser omfl::parse(const std::string &str) {
             }
         }
     }
+    MyParser.pointer_to_section = &MyParser.global_section;
     return MyParser;
 }
 
@@ -348,7 +419,7 @@ bool omfl::OMFLParser::valid() const {
     return OMFLParser::is_valid_format;
 }
 
-omfl::Section omfl::OMFLParser::Get(const std::string &str) const {
+omfl::Section omfl::OMFLParser::Get(const std::string& str) const {
     return this->global_section.Get(str);
 }
 
@@ -417,21 +488,21 @@ bool omfl::Section::AsBool() const {
     return (help_value == "true");
 }
 
-int omfl::Section::AsIntOrDefault(const int &value) const {
+int omfl::Section::AsIntOrDefault(const int& value) const {
     if (CheckInteger(help_value)) {
         return std::stoi(help_value);
     }
     return value;
 }
 
-float omfl::Section::AsFloatOrDefault(const float &value) const {
+float omfl::Section::AsFloatOrDefault(const float& value) const {
     if (CheckFloat(help_value)) {
         return std::stof(help_value);
     }
     return value;
 }
 
-std::string omfl::Section::AsStringOrDefault(const std::string &value) const {
+std::string omfl::Section::AsStringOrDefault(const std::string& value) const {
     if (CheckString(help_value)) {
         std::string answer = help_value;
         answer.erase(0,1);
@@ -441,7 +512,7 @@ std::string omfl::Section::AsStringOrDefault(const std::string &value) const {
     return value;
 }
 
-omfl::Section& omfl::Section::operator[](int index) {
+omfl::Section& omfl::Section::operator[](const int& index) {
     uint32_t pos1 = 1;
     uint32_t pos2 = help_value.size() - 2;
     int counter = 0;
